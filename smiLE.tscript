@@ -448,7 +448,7 @@ class disasm {
 				print("		0x" + tohex(daddr) + ": " + dfg[i].data[dk]);
 				while daddr != dfg[i].paddr do {
 					dk+=1; daddr+=2;
-					print("		0x" + tohex(daddr+(dk*2)) + ": " + dfg[i].data[dk]);
+					print("		0x" + tohex(daddr) + ": " + dfg[i].data[dk]);
 				}
 			}
 		}

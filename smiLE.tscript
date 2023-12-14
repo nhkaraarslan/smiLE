@@ -1,0 +1,620 @@
+# ibm logo
+var rom = "AOCiKmAMYQjQH3AJojnQH6JIcAjQH3AEolfQH3AIombQH3AIonXQHxIo/wD/ADwAPAA8ADwA/wD//wD/ADgAPwA/ADgA/wD/gADgAOAAgACAAOAA4ACA+AD8AD4APwA7ADkA+AD4AwAHAA8AvwD7APMA4wBD4ADgAIAAgACAAIAA4ADg";
+# corax+ test
+#var rom = "EgikZdq0AO4A4Ggyaxqksdi0aDqktdi0aAJpBmoLawFlKmYrpHXYtKSt2bSkZTYrpGHatGsGpHnYtKSt2bSkYUUqpGXatGsLpH3YtKSt2bSkYVVgpGXatGsQpIXYtKSt2bSkYXb/RiqkZdq0ewWkjdi0pK3ZtKRhlWCkZdq0ewWkbdi0pK3ZtKRlEo6kYdq0aBJpFmobawGkcdi0pK3ZtCICewWkadi0pKHZtKRl2rR7BaSJ2LSkadm0pGFlKmcAh1BHKqRl2rR7BaSJ2LSkbdm0pGFmC2cqh2FHK6Rl2rR7BaSJ2LSkcdm0pGFmeGcfh2JHGKRl2rR7BaSJ2LSkddm0pGFmeGcfh2NHZ6Rl2rRoImkmaitrAaSJ2LSkedm0pGFmjGeMh2RHGKRl2rR7BaSJ2LSkfdm0pGFmjGd4h2VH7KRl2rR7BaSJ2LSkhdm0pGFmeGeMh2dH7KRl2rR7BaSJ2LSkgdm0pGFmD4ZmRgekZdq0ewWkidi0pKHZtKRhZuCGbkbApGXatHsFpKXYtKSB2bSkXvFlpGUwqqRhMVWkYdq0aDJpNmo7awGkpdi0pH3ZtKReYABhMPFVpF7wZYEApF/wZaRlMDCkYTEApGHatHsFpKXYtKR12bSkXmaJ9jPyZaRlMAGkYTEDpGEyB6Rh2rR7BaSl2LSkodm0pGFmBPYe2rR7BaSp2LSkrdm0pGVm/3YKNgmkYYZmNgSkYWb/YAqGBDYJpGGGZjYEpGFm/4ZuhmY2f6RhhmaGbjZ+pGFmBXb2NvukYWYFhgU2+6RhZgWAZzD7pGHatBRcqlUAAKBAoACgwIDgoKDgwEBA4OAgwODgYCDgoOAgIODAIMBggODg4CBAQODgoODg4CDAQKDgoMDgoODggIDgwKCgwODAgODggMCAAKCgQKBAoKAKrqJCEDAQuAAA";
+
+var scaling = 8;
+
+# motd
+print("\"smiLE!\" Licensed under GPLv3");
+
+# general defs
+function is_in(val, arr){
+	for var i in 0:arr.size() do {
+		if val == arr[i] then return true;
+	}
+	return false;
+}
+
+# max 28-bit digits
+function tohex(num){
+	var hexstr = "";
+	var alphabet = ["0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f"];
+	var ri = 0;
+	var rem = 17;
+	while (rem > 16) do {
+		rem = num//(2^(4*ri));
+		ri+=1;
+	}
+	for var i in 0:ri do {
+		hexstr += alphabet[(num % 2^(4*(ri-i))) // 2^(4*(ri-i-1))];
+	}
+	return hexstr;
+}
+
+function getindex(char, str){
+	for var i in 0:str.size() do {
+		if char == str[i] then return i;
+	}
+}
+
+function base64_decode(todec) {
+	var base64chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	var out = [];
+	for var i in 0:todec.size()/4 do {
+		var intarr = [];
+		for var j in 0:4 do {
+			intarr.push(getindex(todec[j+(i*4)], base64chars));
+		}
+		# keine shift operationen... :(
+		var cls = intarr[0]*(2^18) + intarr[1]*(2^12) + intarr[2]*(2^6) + intarr[3];
+		out.push(cls//65536 and 255);
+		out.push(cls//256 and 255);
+		out.push(cls and 255);
+	}
+	return out;
+}
+
+function vec_sub(v1,v2){
+	var retvec = [];
+	for var i in 0:v1.size() do retvec.push(v1[i]-v2[i]);
+	return retvec;
+}
+
+function vec_sum(v1){
+	var retval = 0;
+	for var i in 0:v1.size() do retval+=v1[i];
+	return retval;
+}
+
+function nop_calib(acc){
+	var a = [];
+	var b = [];
+	for 0:acc do {
+		a.push(time());
+		0+0;
+		b.push(time());
+	}
+	var stamps = vec_sub(a,b);
+	var freq = 0;
+	for var i in 0:stamps.size() do {
+		if stamps[i] != 0 then {
+			freq+=1;
+		}
+	}
+	return acc//freq;
+}
+
+function nop_wait(time, freq){
+	for 0:time*freq do 0+0;
+}
+
+# Chip8 CPU-Module, decode, exec & dbg
+class Cpu {
+	public:
+						#v0,v1,			...			,vE,vF,I,pc,sp	
+		var registers = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+		var memory = [];
+		var DT = 0;
+		var ST = 0;
+		var keys = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+
+		function xref_gen(xaddr){
+			var opcode = (memory[xaddr] * 2^8 + memory[xaddr+1]);
+			var nhop = (memory[xaddr+2] * 2^8 + memory[xaddr+3]) and 61440;
+			var	hop = opcode and 61440;
+			if (hop == 4096) then return [opcode-4096];
+			else if (hop == 8192) then return [opcode-8192, xaddr+2];
+			# if control flow is SE, JMP or similar
+			else if (is_in(hop, cond) and ((nhop == 4096) or (nhop == 8192))) then return [xaddr+4, xaddr+2];
+			else if (opcode == 238) then return [];
+			else return 0;
+		}
+		
+		function opc_dec(xaddr){
+			var opcode = (memory[xaddr] * 2^8 + memory[xaddr+1]);
+			var	hopcode = opcode and 61440;
+			var nnn = opcode - hopcode;
+			var x = memory[xaddr] and 15;
+			var y = memory[xaddr+1] // 2^4;
+			var n = memory[xaddr+1] and 15;
+			var lopcode = n;
+			var nn = memory[xaddr+1];
+
+			if (opcode == 224) then return "CLS";
+			else if (opcode == 238) then return "RET";
+			else if (hopcode == 4096) then return "JMP *0x" + tohex(nnn);
+			else if (hopcode == 8192) then return "CALL *0x" + tohex(nnn);
+			else if (hopcode == 12288) then return "SE v" + tohex(x) + ", 0x" + tohex(nn);
+			else if (hopcode == 16384) then return "SNE v" + tohex(x) + ", 0x" + tohex(nn);
+			else if (hopcode == 20480) then return "SE v" + tohex(x) + ", v" + tohex(y);
+			else if (hopcode == 36864) then return "SNE v" + tohex(x) + ", v" + tohex(y);
+			else if (hopcode == 24576) then return "LD v" + tohex(x) + ", 0x" + tohex(nn);
+			else if (hopcode == 28672) then return "ADD v" + tohex(x) + ", 0x" + tohex(nn);
+			else if (hopcode == 32768) then {
+				if (lopcode == 0) then return "LD v" + tohex(x) + ", v" + tohex(y);
+				else if (lopcode == 1) then return "OR v" + tohex(x) + ", v" + tohex(y);
+				else if (lopcode == 2) then return "AND v" + tohex(x) + ", v" + tohex(y);
+				else if (lopcode == 3) then return "XOR v" + tohex(x) + ", v" + tohex(y);
+				else if (lopcode == 4) then return "ADD v" + tohex(x) + ", v" + tohex(y);
+				else if (lopcode == 5) then return "SUB v" + tohex(x) + ", v" + tohex(y);
+				else if (lopcode == 6) then return "SHR v" + tohex(x) + ", v" + tohex(y);
+				else if (lopcode == 7) then return "SUBN v" + tohex(x) + ", v" + tohex(y);
+				else if (lopcode == 14) then return "SHL v" + tohex(x) + ", v" + tohex(y);
+
+			}
+			else if (hopcode == 40960) then return "LD I, *0x" + tohex(nnn);
+			else if (hopcode == 53248) then return "DRW v" + tohex(x) + ", v" + tohex(y) + ", 0x" + tohex(n);
+			else if (hopcode == 49152) then return "RND v" + tohex(x) + ", 0x" + tohex(nn);
+			else if (hopcode == 57344) then {
+				if (nn == 158) then return "SKP v" + tohex(x);
+				else if (nn == 161) then return "SKNP v" + tohex(x);
+			}
+			else if (hopcode == 61440) then {
+				if ((opcode and 255) == 7) then return "LD v" + tohex(x) + ", DT";
+				else if ((opcode and 255) == 10) then return "LD v" + tohex(x) + ", K";
+				else if ((opcode and 255) == 21) then return "LD DT, v" + tohex(x);
+				else if ((opcode and 255) == 24) then return "LD ST, v" + tohex(x);
+				else if ((opcode and 255) == 30) then return "ADD I, v" + tohex(x);
+				else if ((opcode and 255) == 41) then return "LD F, v" + tohex(x);
+				else if ((opcode and 255) == 51) then return "LD B, v" + tohex(x);
+				else if ((opcode and 255) == 85) then return "LD [I\\], v" + tohex(x);
+				else if ((opcode and 255) == 101) then return "LD v" + tohex(x) + ", [I\\]";
+			}
+			else return false;
+		}
+		
+		function dexec(){
+			var opcode = (memory[registers[17]] * 2^8 + memory[registers[17]+1]);
+			var hopcode = opcode and 61440;
+			var lopcode = opcode and 15;
+			if (opcode == 224) then CLS();
+			else if (opcode == 238) then RET();
+			else if (hopcode == 4096) then JMP();
+			else if (hopcode == 8192) then CALL();
+			else if (hopcode == 12288) then SEM();
+			else if (hopcode == 16384) then SNEM();
+			else if (hopcode == 20480) then SE();
+			else if (hopcode == 36864) then SNE();
+			else if (hopcode == 24576) then LD();
+			else if (hopcode == 28672) then ADDM();
+			else if (hopcode == 32768) then {
+				if (lopcode == 0) then SET();
+				else if (lopcode == 1) then OR();
+				else if (lopcode == 2) then AND();
+				else if (lopcode == 3) then XOR();
+				else if (lopcode == 4) then ADD();
+				else if (lopcode == 5) then SUB();
+				else if (lopcode == 6) then SHR();
+				else if (lopcode == 7) then SUBR();
+				else if (lopcode == 14) then SHL();
+			}
+			else if (hopcode == 40960) then LDI();
+			else if (hopcode == 53248) then DRW();
+			else if (hopcode == 49152) then RAND();
+			else if (hopcode == 61440) then{
+				if ((opcode and 255) == 7) then LDVT();
+				else if ((opcode and 255) == 10) then LDVK();
+				else if ((opcode and 255) == 21) then LDTV();
+				else if ((opcode and 255) == 24) then LDST();
+				else if ((opcode and 255) == 30) then ADDIV();
+				else if ((opcode and 255) == 41) then LDFV();
+				else if ((opcode and 255) == 51) then LDD();
+				else if ((opcode and 255) == 85) then LDM();
+				else if ((opcode and 255) == 101) then LDB();
+			}
+			#else if (hopcode == 61440) then {
+			#	if ((opcode and 255) == 7) then return "LD v" + tohex(x) + ", DT";
+			#	else if ((opcode and 255) == 10) then return "LD v" + tohex(x) + ", K";
+			#	else if ((opcode and 255) == 21) then return "LD DT, v" + tohex(x);
+			#	else if ((opcode and 255) == 24) then return "LD ST, v" + tohex(x);
+			#	else if ((opcode and 255) == 30) then return "ADD I, v" + tohex(x);
+			#	else if ((opcode and 255) == 41) then return "LD F, v" + tohex(x);
+			#	else if ((opcode and 255) == 51) then return "LD B, v" + tohex(x);
+			#	else if ((opcode and 255) == 85) then return "LD [I\\], v" + tohex(x);
+			#	else if ((opcode and 255) == 101) then return "LD v" + tohex(x) + ", [I\\]";
+			#}
+			else {
+#				print("UNKNOWN INSTRUCTION: " + opcode);
+			}
+			registers[17]+=2;
+		}
+
+		constructor(){
+			for 0:4096 do memory.push(0);
+			init_fb();
+			for var i in 0:16 do {
+				for var j in 0:5 do{
+					memory[i*5 + j + 80] = fonts[i][j];
+				}
+			}
+			registers[17] = 512;
+		}
+		
+	private:
+		var cond = [12288, 20480, 16384, 36864, 57344];
+		var fonts = [
+			[240, 144, 144, 144, 240],	#	0
+			[32, 96, 32, 32, 112], 		#	1
+			[240, 16, 240, 128, 240], 	#	2
+			[240, 16, 240, 16, 240], 	#	3
+			[144, 144, 240, 16, 16], 	#	4
+			[240, 128, 240, 16, 240], 	#	5
+			[240, 128, 240, 144, 240],	#	6
+			[240, 16, 32, 64, 64], 		#	7
+			[240, 144, 240, 144, 240],	#	8
+			[240, 144, 240, 16, 240], 	#	9
+			[240, 144, 240, 144, 144],	#	A 
+			[224, 144, 224, 144, 224],	#	B 
+			[240, 128, 128, 128, 240],	#	C
+			[224, 144, 144, 144, 224],	#	D 
+			[240, 128, 240, 128, 240],	#	E 
+			[240, 128, 240, 128, 128] 	#	F 
+		];
+		function init_fb(){
+			canvas.setFillColor(1,1,1);
+			for var x in 0:64 do{
+				for var y in 0:32 do{
+					canvas.fillRect(x*scaling,y*scaling,scaling,scaling);
+				}
+			}
+			canvas.setFillColor(1,1,1);
+		}
+		# IR defs
+		function lcg(sd){
+			sd = sd*843314857+1;
+			return (sd//(2^24) and 255);	
+		}
+		function CLS() { # 00E0
+			init_fb();
+		}
+		function RET() { # 00EE
+			registers[18] = registers[18] - 1;
+			registers[17] = memory[registers[18]];
+		}
+		function JMP() { # 1nnn
+			registers[17] = (memory[registers[17]] - 16)*2^8 + (memory[registers[17]+1] - 2);  
+		}
+		function CALL() { # 2nnn
+			memory[registers[18]] = registers[17];
+			registers[17] = (memory[registers[17]] - 32)*2^8 + (memory[registers[17]+1] - 2);
+			registers[18] += 1;
+		}
+		function SEM(){ # 3xnn
+			if registers[memory[registers[17]] - 48] == memory[registers[17]+1] then {
+				registers[17] += 2;
+			}
+		}
+		function SNEM(){ # 4xnn
+			if registers[memory[registers[17]] - 64] != memory[registers[17]+1] then {
+				registers[17] += 2;
+			}
+		}
+		function SE(){ # 5xy0
+			if registers[memory[registers[17]] - 80] == registers[memory[registers[17] + 1] // 2^4] then {
+				registers[17] += 2;
+			}
+		}
+		function SNE(){ # 9xy0
+			if registers[memory[registers[17]] - 144] != registers[memory[registers[17] + 1] // 2^4] then {
+				registers[17] += 2;
+			}
+		}
+		function LD() {
+			registers[memory[registers[17]] - 96] = memory[registers[17]+1];
+		}
+		function ADDM(){
+			registers[memory[registers[17]] - 112] += memory[registers[17]+1];
+			registers[memory[registers[17]] - 112] = registers[memory[registers[17]] - 112] and 255;
+		}
+		function SET(){ # 8xy0
+			registers[memory[registers[17]] - 128] = registers[memory[registers[17] + 1] // 2^4];
+		}
+		function OR(){ # 8xy1
+			registers[memory[registers[17]] - 128] = registers[memory[registers[17]] - 128] or registers[memory[registers[17] + 1] // 2^4];
+		}
+		function AND(){ # 8xy2
+			registers[memory[registers[17]] - 128] = registers[memory[registers[17]] - 128] and registers[memory[registers[17] + 1] // 2^4];
+		}
+		function XOR(){ # 8xy3
+			registers[memory[registers[17]] - 128] = registers[memory[registers[17]] - 128] xor registers[memory[registers[17] + 1] // 2^4];
+		}
+		function ADD(){ # 8xy4
+			registers[memory[registers[17]] - 128] = (registers[memory[registers[17]] - 128] + registers[memory[registers[17] + 1] // 2^4]) and 255;
+		}
+		function SUB(){ # 8xy5
+			registers[memory[registers[17]] - 128] = (registers[memory[registers[17]] - 128] - registers[memory[registers[17] + 1] // 2^4]) and 255;
+			if (registers[memory[registers[17]] - 128] >= registers[memory[registers[17] + 1] // 2^4]) then {
+				registers[15] = 1;
+			}
+			else registers[15] = 0;
+		}
+		function SUBR(){ # 8xy7
+			registers[memory[registers[17]] - 128] = (registers[memory[registers[17] + 1] // 2^4] - registers[memory[registers[17]] - 128]) and 255;
+			if (registers[memory[registers[17] + 1] // 2^4]) >= (registers[memory[registers[17]] - 128]) then {
+				registers[15] = 1;
+			}
+			else registers[15] = 0;
+		}
+		function SHR(){ # 8xy6
+			registers[memory[registers[17]] - 128] = registers[memory[registers[17] + 1] // 2^4];
+			registers[memory[registers[17]] - 128] = registers[memory[registers[17]] - 128] // 2;
+			if registers[memory[registers[17]] - 128] >= 0 then {
+				registers[memory[registers[17]] - 128] = registers[memory[registers[17]] - 128] and 255;
+				registers[15] = 1;
+			}
+		}
+		function SHL(){ # 8xyE
+			registers[memory[registers[17]] - 128] = registers[memory[registers[17] + 1] // 2^4];
+			registers[memory[registers[17]] - 128] = registers[memory[registers[17]] - 128] * 2;
+			if registers[memory[registers[17]] - 128] >= 255 then {
+				registers[memory[registers[17]] - 128] = registers[memory[registers[17]] - 128] and 255;
+				registers[15] = 1;
+			}
+		}
+		function LDI() {
+			registers[16] = (memory[registers[17]] - 160)*2^8 + (memory[registers[17]+1]);
+		}
+		function DRW() {
+			var x = registers[(memory[registers[17]] - 208)] and 63;
+			var y = registers[(memory[registers[17] + 1] // 2^4)] and 31;
+			var N = memory[registers[17] + 1] and 15;
+			registers[15] = 0;
+			for var n in 0:N do {
+				var spd = memory[registers[16] + n];
+				if spd != 0 then {
+					for var j in 1:9 do{
+						if ((spd // 2^(8-j)) and 1) == 1 then {
+							if canvas.getPixel(x*scaling,y*scaling)[0] == 0 then {
+								canvas.setFillColor(1,1,1);
+								canvas.fillRect(x*scaling,y*scaling,scaling,scaling);
+								registers[15] = 1;
+							}
+							else {
+								canvas.setFillColor(0,0,0);
+								canvas.fillRect(x*scaling,y*scaling,scaling,scaling);
+							};
+						}
+						x+=1;
+					}
+					x = x-8;
+				}
+				y+=1;
+
+			}
+		}
+		function RAND(){
+			var rng = Integer(math.floor(255*math.random()));
+			registers[memory[registers[17]] - 192] = rng and memory[registers[17]+1];
+		}
+		function LDM() { # Fx55
+			for var i in 0:(memory[registers[17]] - 239) do {
+				memory[registers[16] + i] = registers[i];
+			}
+		}
+		function LDB() { # Fx66
+			for var i in 0:(memory[registers[17]] - 239) do {
+				registers[i] = memory[registers[16] + i];
+			}
+		
+		}
+		function LDD() { # Fx33
+			memory[registers[16]] = (registers[memory[registers[17]] - 240] // 100);
+			memory[registers[16] + 1] = (registers[memory[registers[17]] - 240] // 10 - memory[registers[16]]*10);
+			memory[registers[16] + 2] = (registers[memory[registers[17]] - 240] - (memory[registers[16]]*100 + memory[registers[16]+1]*10));
+		}
+		function LDVT(){
+			registers[memory[registers[17]] - 239] = DT;
+		}		
+		function LDVK(){
+			registers[memory[registers[17]] - 239] = getindex(1, keys);
+		}
+		function LDTV(){
+			DT = registers[memory[registers[17]] - 239];
+		}
+		function LDST(){
+			registers[memory[registers[17]] - 239] = ST;
+		}
+		function ADDIV(){
+			registers[16] += registers[memory[registers[17]] - 239];
+		}
+		function LDFV(){
+			var fontsec = registers[memory[registers[17]] - 239];
+			registers[16] = 80 + fontsec*5;
+		}
+}
+
+# disassembler class
+# https://reverseengineering.stackexchange.com/questions/2347/what-is-the-algorithm-used-in-recursive-traversal-disassembly
+class bblock {	# linked list
+	public:
+		var saddr;
+		var data = [];
+		var paddr = [];
+}
+
+class disasm {
+	public:
+		var queue =[];
+		var dfg = [];
+		var dfg_head = 0;
+		var cpumod;
+		function print_disasm(){
+			print(".start");
+			for var i in 0:dfg.size() do {
+				var daddr = dfg[i].saddr;
+				print("loc_" + tohex(daddr) + ":");
+				var dk = 0;
+				print("		0x" + tohex(daddr) + ": " + dfg[i].data[dk]);
+				while daddr != dfg[i].paddr do {
+					dk+=1; daddr+=2;
+					print("		0x" + tohex(daddr+(dk*2)) + ": " + dfg[i].data[dk]);
+				}
+			}
+		}
+		constructor(cpu){
+			cpumod = cpu;
+			queue = [cpu.registers[17]];
+			bblock_traverse();
+			mergesort_dfg(dfg);
+			bblock_clean();
+			print_disasm();
+		}
+	private:
+		function bblock_traverse() {
+			while (queue.size() != 0) do {
+				var caddr = queue.pop();
+				var dstring = cpumod.opc_dec(caddr);
+				dfg.push(bblock());
+				dfg[dfg_head].saddr = caddr;
+				while dstring != false do {
+					dfg[dfg_head].data.push(dstring);
+					var xrefs = cpumod.xref_gen(caddr);
+					if (xrefs != 0) then {
+						for var i in 0:xrefs.size() do queue.push(xrefs[i]);
+						break;
+					}
+					caddr+=2;
+					dstring = cpumod.opc_dec(caddr);
+				}
+				dfg[dfg_head].paddr = caddr;
+				dfg_head+=1;
+				var exists;
+				if queue.size() != 0 then {
+					for var i in 0:dfg.size() do {
+						if (dfg[i].saddr == queue[queue.size()-1]) then {
+							exists = 1;
+						}			
+					}
+				}
+				if exists == 1 then queue.pop();
+			}
+		}
+
+		function bblock_clean(){
+			var ndfg = [];
+			var msaddr = 0;
+			for var i in 0:dfg.size() do {
+				if dfg[i].saddr > msaddr then {
+					msaddr = dfg[i].saddr;
+					ndfg.push(dfg[i]);
+				}
+			}
+			dfg = ndfg;
+		}
+
+		# https://www.programiz.com/dsa/merge-sort
+		function mergesort_dfg(arr){
+			if arr.size() > 1 then {
+				var r = arr.size()//2;
+				var L = [];
+				var M = [];
+				for var i in 0:r do L.push(arr[i]);
+				for var i in r:arr.size() do M.push(arr[i]);
+				mergesort_dfg(L);
+				mergesort_dfg(M);
+				var i = 0; var j = 0; var k = 0;
+
+				while i < L.size() and j < M.size() do {
+					if L[i].saddr < M[j].saddr then {
+						arr[k] = L[i];
+						i+=1;
+					}
+					else {
+						arr[k] = M[j];
+						j+=1;
+					}
+					k+=1;
+				}
+				while i < L.size() do {
+					arr[k] = L[i];
+					i+=1;
+					k+=1;
+				}
+				while j < M.size() do {
+					arr[k] = M[j];
+					j+=1;
+					k+=1;
+				}		
+			}
+		}
+}
+var cpu = Cpu();
+
+function rom_load(rom){
+	var romdec = base64_decode(rom);
+	for var i in 0:romdec.size() do {
+		cpu.memory[512+i] = romdec[i];
+	}
+}
+
+function cycle_prof() {
+	var a = Real(0); var b = Real(0);
+	a = time();
+	cpu.dexec();
+	b = time();
+	return a - b;
+}
+
+var cal = nop_calib(5000);
+
+function cycle(event){
+		var opcode = (cpu.memory[cpu.registers[17]] * 2^8 + cpu.memory[cpu.registers[17]+1]);
+		var	hop = opcode and 61440;
+#		while hop != 53248 do {
+		cpu.dexec();
+		nop_wait(1, cal);
+		opcode = (cpu.memory[cpu.registers[17]] * 2^8 + cpu.memory[cpu.registers[17]+1]);
+		hop = opcode and 61440;
+#		}
+		cpu.dexec();
+		if cpu.DT != 0 then cpu.DT = (cpu.DT-1);
+}
+
+function keypress(event){
+	if event.key == "1" then cpu.keys[1] = 1;
+	else if event.key == "2" then cpu.keys[2] = 1;
+	else if event.key == "3" then cpu.keys[3] = 1;
+	else if event.key == "q" then cpu.keys[4] = 1;
+	else if event.key == "w" then cpu.keys[5] = 1;
+	else if event.key == "e" then cpu.keys[6] = 1;
+	else if event.key == "a" then cpu.keys[7] = 1;
+	else if event.key == "s" then cpu.keys[8] = 1;
+	else if event.key == "d" then cpu.keys[9] = 1;
+	else if event.key == "z" then cpu.keys[10] = 1;
+	else if event.key == "x" then cpu.keys[0] = 1;
+	else if event.key == "c" then cpu.keys[11] = 1;
+	else if event.key == "4" then cpu.keys[12] = 1;
+	else if event.key == "r" then cpu.keys[13] = 1;
+	else if event.key == "f" then cpu.keys[14] = 1;
+	else if event.key == "v" then cpu.keys[15] = 1;
+}
+
+function keyrelease(event){
+	cpu.registers[17] = cpu.registers[17] - 1;
+	cpu.dexec();
+	if event.key == "1" then cpu.keys[1] = 0;
+	else if event.key == "2" then cpu.keys[2] = 0;
+	else if event.key == "3" then cpu.keys[3] = 0;
+	else if event.key == "q" then cpu.keys[4] = 0;
+	else if event.key == "w" then cpu.keys[5] = 0;
+	else if event.key == "e" then cpu.keys[6] = 0;
+	else if event.key == "a" then cpu.keys[7] = 0;
+	else if event.key == "s" then cpu.keys[8] = 0;
+	else if event.key == "d" then cpu.keys[9] = 0;
+	else if event.key == "z" then cpu.keys[10] = 0;
+	else if event.key == "x" then cpu.keys[0] = 0;
+	else if event.key == "c" then cpu.keys[11] = 0;
+	else if event.key == "4" then cpu.keys[12] = 0;
+	else if event.key == "r" then cpu.keys[13] = 0;
+	else if event.key == "f" then cpu.keys[14] = 0;
+	else if event.key == "v" then cpu.keys[15] = 0;
+}
+
+rom_load(rom);
+var dasm = disasm(cpu);
+setEventHandler("timer", cycle);
+setEventHandler("canvas.keyup", keypress);
+setEventHandler("canvas.keydown", keyrelease);
+
+enterEventMode();
